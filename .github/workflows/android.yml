@@ -1,0 +1,285 @@
+# SPDX-FileCopyrightText: 2025 The Kate Authors
+# SPDX-License-Identifier: CC0-1.0
+#
+# Build KWrite for Android and publish the APK as a GitHub Actions artifact.
+# Cross-compiles KWrite and all required KDE Frameworks for Android
+# (arm64-v8a) using Qt 6.
+#
+# Reference apps that also support Android:
+#   KTrip: https://invent.kde.org/utilities/ktrip
+#   Elisa: https://invent.kde.org/multimedia/elisa
+# Environment setup reference:
+#   https://community.kde.org/Android/Environment_via_Container
+
+name: Android (KWrite APK)
+
+on:
+  push:
+    branches:
+      - master
+      - 'copilot/**'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_VERSION: '6.8.3'
+  ANDROID_ABI: 'arm64-v8a'
+  ANDROID_API: '34'
+  NDK_VERSION: '26.3.11579264'
+  # KDE Frameworks version to build against.
+  KF_VERSION: '6.12.0'
+
+jobs:
+  build-android-apk:
+    name: Build KWrite Android APK
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      # ------------------------------------------------------------------ #
+      # 1. Checkout                                                          #
+      # ------------------------------------------------------------------ #
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------ #
+      # 2. Java 17 (required by Android Gradle)                             #
+      # ------------------------------------------------------------------ #
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ------------------------------------------------------------------ #
+      # 3. Android SDK + NDK                                                 #
+      # ------------------------------------------------------------------ #
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and build tools
+        run: |
+          sdkmanager \
+            "ndk;${NDK_VERSION}" \
+            "build-tools;34.0.0" \
+            "platforms;android-${ANDROID_API}"
+          echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      # ------------------------------------------------------------------ #
+      # 4. Qt for desktop (host tools: moc, rcc, uic, androiddeployqt)      #
+      # ------------------------------------------------------------------ #
+      - name: Install Qt ${{ env.QT_VERSION }} for Linux (host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          target: desktop
+          cache: true
+          cache-key-prefix: qt-linux-desktop-${{ env.QT_VERSION }}
+          dir: ${{ github.workspace }}/qt-install
+
+      - name: Save Qt host path
+        run: |
+          QT_HOST="${{ github.workspace }}/qt-install/Qt/${{ env.QT_VERSION }}/gcc_64"
+          echo "QT_HOST_PATH=${QT_HOST}" >> "$GITHUB_ENV"
+          echo "Qt host at: ${QT_HOST}"
+          ls "${QT_HOST}/bin/qmake" || true
+
+      # ------------------------------------------------------------------ #
+      # 5. Qt for Android arm64-v8a (cross-compilation target)              #
+      # ------------------------------------------------------------------ #
+      - name: Install Qt ${{ env.QT_VERSION }} for Android arm64-v8a
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          target: android
+          arch: android_arm64_v8a
+          modules: 'qtimageformats'
+          cache: true
+          cache-key-prefix: qt-android-arm64-${{ env.QT_VERSION }}
+          dir: ${{ github.workspace }}/qt-install
+
+      - name: Save Qt Android path
+        run: |
+          QT_ANDROID="${{ github.workspace }}/qt-install/Qt/${{ env.QT_VERSION }}/android_arm64_v8a"
+          echo "QT_ANDROID=${QT_ANDROID}" >> "$GITHUB_ENV"
+          echo "Qt Android at: ${QT_ANDROID}"
+          ls "${QT_ANDROID}/lib/cmake/Qt6/qt.toolchain.cmake" || true
+
+      # ------------------------------------------------------------------ #
+      # 6. System build dependencies                                         #
+      # ------------------------------------------------------------------ #
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            gettext \
+            bison \
+            flex \
+            libgl-dev \
+            libgles2-mesa-dev \
+            libxslt-dev \
+            libxml2-dev \
+            libssl-dev
+
+      # ------------------------------------------------------------------ #
+      # 7. KDE Frameworks for Android (cached)                              #
+      # ------------------------------------------------------------------ #
+      - name: Cache KDE Frameworks (Android arm64)
+        id: cache-kde-android
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/kde-android
+          key: kde-android-arm64-kf${{ env.KF_VERSION }}-qt${{ env.QT_VERSION }}-v1
+
+      - name: Build KDE Frameworks for Android
+        if: steps.cache-kde-android.outputs.cache-hit != 'true'
+        run: |
+          set -xe
+
+          INSTALL_DIR="${{ github.workspace }}/kde-android"
+          mkdir -p "$INSTALL_DIR"
+
+          # ---- ECM: host build (provides cmake modules) ----
+          git clone --depth=1 --branch "v${{ env.KF_VERSION }}" \
+            https://invent.kde.org/frameworks/extra-cmake-modules.git /tmp/ecm-src
+          cmake -B /tmp/ecm-build -S /tmp/ecm-src -GNinja \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_HTML_DOCS=OFF
+          cmake --build /tmp/ecm-build
+          cmake --install /tmp/ecm-build
+          rm -rf /tmp/ecm-src /tmp/ecm-build
+
+          # ---- Common cross-compilation arguments ----
+          CROSS=(
+            "-GNinja"
+            "-DCMAKE_TOOLCHAIN_FILE=${{ env.QT_ANDROID }}/lib/cmake/Qt6/qt.toolchain.cmake"
+            "-DQT_HOST_PATH=${{ env.QT_HOST_PATH }}"
+            "-DANDROID_ABI=${{ env.ANDROID_ABI }}"
+            "-DANDROID_PLATFORM=android-${{ env.ANDROID_API }}"
+            "-DANDROID_STL=c++_shared"
+            "-DANDROID_NDK=${{ env.ANDROID_NDK_ROOT }}"
+            "-DCMAKE_INSTALL_PREFIX=$INSTALL_DIR"
+            "-DCMAKE_PREFIX_PATH=$INSTALL_DIR"
+            "-DCMAKE_FIND_ROOT_PATH=$INSTALL_DIR"
+            "-DECM_DIR=$INSTALL_DIR/share/ECM/cmake"
+            "-DCMAKE_BUILD_TYPE=Release"
+            "-DBUILD_TESTING=OFF"
+            "-DBUILD_HTML_DOCS=OFF"
+          )
+
+          kf_build() {
+            local name="$1"
+            local repo="$2"
+            shift 2
+            echo ""
+            echo "======== Building ${name} v${{ env.KF_VERSION }} ========"
+            git clone --depth=1 --branch "v${{ env.KF_VERSION }}" \
+              "https://invent.kde.org/frameworks/${repo}.git" "/tmp/${name}-src"
+            cmake -B "/tmp/${name}-build" -S "/tmp/${name}-src" \
+              "${CROSS[@]}" "$@"
+            cmake --build "/tmp/${name}-build" -j"$(nproc)"
+            cmake --install "/tmp/${name}-build"
+            rm -rf "/tmp/${name}-src" "/tmp/${name}-build"
+          }
+
+          # ---- Tier 1: no KDE deps, Qt only ----
+          kf_build ki18n           ki18n
+          kf_build kcoreaddons     kcoreaddons
+          kf_build kconfig         kconfig
+          kf_build karchive        karchive
+          kf_build kcodecs         kcodecs
+          kf_build kguiaddons      kguiaddons
+          kf_build kwidgetsaddons  kwidgetsaddons
+
+          # ---- Tier 2 ----
+          kf_build kcolorscheme    kcolorscheme
+          kf_build kwindowsystem   kwindowsystem
+          kf_build kauth           kauth
+          kf_build kservice        kservice
+          kf_build kcompletion     kcompletion
+          kf_build kitemviews      kitemviews
+          kf_build kjobwidgets     kjobwidgets
+          kf_build solid           solid
+
+          # ---- Tier 3 ----
+          kf_build kconfigwidgets  kconfigwidgets
+          kf_build kiconthemes     kiconthemes
+
+          # ---- KXmlGui (needed by KParts) ----
+          kf_build kxmlgui         kxmlgui
+
+          # ---- KBookmarks (needed by KIO) ----
+          kf_build kbookmarks      kbookmarks
+
+          # ---- KIO ----
+          kf_build kio             kio
+
+          # ---- Sonnet (spell check, needed by KTextEditor) ----
+          kf_build sonnet          sonnet \
+            -DSONNET_USE_ASPELL=OFF \
+            -DSONNET_USE_HUNSPELL=OFF
+
+          # ---- KSyntaxHighlighting (repo named differently) ----
+          kf_build syntax-highlighting  syntax-highlighting
+
+          # ---- KTextWidgets ----
+          kf_build ktextwidgets    ktextwidgets
+
+          # ---- KParts ----
+          kf_build kparts          kparts
+
+          # ---- KTextEditor ----
+          kf_build ktexteditor     ktexteditor \
+            -DENABLE_KAUTH=OFF
+
+      # ------------------------------------------------------------------ #
+      # 8. Configure KWrite for Android                                      #
+      # ------------------------------------------------------------------ #
+      - name: Configure KWrite for Android
+        run: |
+          cmake -B build-android -S . \
+            -GNinja \
+            -DCMAKE_TOOLCHAIN_FILE="${QT_ANDROID}/lib/cmake/Qt6/qt.toolchain.cmake" \
+            -DQT_HOST_PATH="${QT_HOST_PATH}" \
+            -DANDROID_ABI="${ANDROID_ABI}" \
+            -DANDROID_PLATFORM="android-${ANDROID_API}" \
+            -DANDROID_STL="c++_shared" \
+            -DANDROID_NDK="${ANDROID_NDK_ROOT}" \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/kde-android" \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/kde-android" \
+            -DCMAKE_FIND_ROOT_PATH="${{ github.workspace }}/kde-android" \
+            -DECM_DIR="${{ github.workspace }}/kde-android/share/ECM/cmake" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_addons=OFF \
+            -DBUILD_kate=OFF \
+            -DBUILD_doc=OFF
+
+      # ------------------------------------------------------------------ #
+      # 9. Build KWrite                                                       #
+      # ------------------------------------------------------------------ #
+      - name: Build KWrite for Android
+        run: cmake --build build-android -j"$(nproc)"
+
+      # ------------------------------------------------------------------ #
+      # 10. Upload APK artifact                                              #
+      # ------------------------------------------------------------------ #
+      - name: Upload KWrite APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kwrite-android-apk-${{ github.sha }}
+          path: |
+            build-android/**/*.apk
+            build-android/**/*.aab
+          if-no-files-found: warn
+          retention-days: 30

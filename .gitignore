@@ -34,3 +34,12 @@ CMakeLists.txt.user*
 .flatpak/
 .flatpak-builder/
 /_build/
+# Android build artifacts
+*.apk
+*.aab
+
+# KDE Craft / CraftMaster
+/craft/
+
+# aqtinstall log
+aqtinstall.log
