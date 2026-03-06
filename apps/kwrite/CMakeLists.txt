@@ -48,18 +48,24 @@ endif()
 
 install(TARGETS kwrite ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 
-ecm_install_icons(
-    ICONS ${ICON_FILES}
-    DESTINATION ${KDE_INSTALL_ICONDIR}
-    THEME hicolor
-)
+if (NOT ANDROID)
+    ecm_install_icons(
+        ICONS ${ICON_FILES}
+        DESTINATION ${KDE_INSTALL_ICONDIR}
+        THEME hicolor
+    )
 
-install(
-  FILES ${CMAKE_CURRENT_SOURCE_DIR}/data/org.kde.kwrite.desktop
-  DESTINATION ${KDE_INSTALL_APPDIR}
-)
+    install(
+      FILES ${CMAKE_CURRENT_SOURCE_DIR}/data/org.kde.kwrite.desktop
+      DESTINATION ${KDE_INSTALL_APPDIR}
+    )
 
-install(
-  FILES ${CMAKE_CURRENT_SOURCE_DIR}/data/org.kde.kwrite.appdata.xml
-  DESTINATION ${KDE_INSTALL_METAINFODIR}
-)
+    install(
+      FILES ${CMAKE_CURRENT_SOURCE_DIR}/data/org.kde.kwrite.appdata.xml
+      DESTINATION ${KDE_INSTALL_METAINFODIR}
+    )
+endif()
+
+if (ANDROID)
+    ecm_add_android_apk(kwrite ANDROID_DIR ${CMAKE_SOURCE_DIR}/android)
+endif()

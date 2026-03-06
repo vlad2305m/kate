@@ -35,9 +35,12 @@ include(ECMOptionalAddSubdirectory)
 include(ECMAddAppIcon)
 include(ECMInstallIcons)
 include(ECMDeprecationSettings)
+include(ECMAddAndroidApk)
 
 include(FeatureSummary)
-include(FindIntl)
+if (NOT ANDROID)
+    include(FindIntl)
+endif()
 
 # Required here so that the version comparison below works
 find_package(Qt6Widgets ${QT_MIN_VERSION} CONFIG REQUIRED)
@@ -53,14 +56,20 @@ find_package(KF6 ${KF6_DEP_VERSION}
         I18n
         CoreAddons
         GuiAddons
-        Crash
         IconThemes
         TextEditor
     OPTIONAL_COMPONENTS
+        Crash
         DocTools
 )
 
-if (NOT WIN32 AND NOT HAIKU)
+if (NOT ANDROID)
+    if (NOT KF6Crash_FOUND)
+        message(FATAL_ERROR "KF6::Crash is required on non-Android platforms")
+    endif()
+endif()
+
+if (NOT WIN32 AND NOT HAIKU AND NOT ANDROID)
     find_package(Intl)
     set_package_properties(Intl PROPERTIES TYPE REQUIRED
         URL "http://gnuwin32.sourceforge.net/packages/libintl.htm"
@@ -120,3 +129,8 @@ feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
 file(GLOB_RECURSE ALL_CLANG_FORMAT_SOURCE_FILES *.cpp *.h)
 kde_clang_format(${ALL_CLANG_FORMAT_SOURCE_FILES})
 kde_configure_git_pre_commit_hook(CHECKS CLANG_FORMAT)
+
+if (ANDROID)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/android/version.gradle.in
+                   ${CMAKE_BINARY_DIR}/version.gradle)
+endif()

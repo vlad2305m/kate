@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SPDX-License-Identifier: CC0-1.0
+    SPDX-FileCopyrightText: 2025 The Kate Authors
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="128dp" android:height="128dp" android:gravity="center">
+        <bitmap
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:scaleType="fitXY"
+            android:src="@drawable/kwrite"/>
+    </item>
+</layer-list>

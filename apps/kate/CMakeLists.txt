@@ -16,7 +16,7 @@ endif()
 target_link_libraries(kate-bin PRIVATE kateprivate)
 
 # X11 startup handling
-if (UNIX AND NOT APPLE)
+if (UNIX AND NOT APPLE AND NOT ANDROID)
     target_link_libraries(kate-bin PRIVATE Qt::GuiPrivate)
 endif()
 
@@ -77,18 +77,21 @@ endif()
 
 install(TARGETS kate-bin ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 
-ecm_install_icons(
-  ICONS ${ICON_FILES}
-  DESTINATION ${KDE_INSTALL_ICONDIR}
-  THEME hicolor
-)
+if (NOT ANDROID)
+    ecm_install_icons(
+      ICONS ${ICON_FILES}
+      DESTINATION ${KDE_INSTALL_ICONDIR}
+      THEME hicolor
+    )
 
-install(
-  PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/data/org.kde.kate.desktop
-  DESTINATION ${KDE_INSTALL_APPDIR}
-)
+    install(
+      PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/data/org.kde.kate.desktop
+      DESTINATION ${KDE_INSTALL_APPDIR}
+    )
 
-install(
-  FILES ${CMAKE_CURRENT_SOURCE_DIR}/data/org.kde.kate.appdata.xml
-  DESTINATION ${KDE_INSTALL_METAINFODIR}
-)
+    install(
+      FILES ${CMAKE_CURRENT_SOURCE_DIR}/data/org.kde.kate.appdata.xml
+      DESTINATION ${KDE_INSTALL_METAINFODIR}
+    )
+endif()
+
