@@ -18,7 +18,9 @@
 
 #include <KAboutData>
 #include <KConfigGui>
+#ifndef Q_OS_ANDROID
 #include <KCrash>
+#endif
 #include <KIconTheme>
 #include <KLazyLocalizedString>
 #include <KLocalizedString>
@@ -86,7 +88,7 @@
 
 #ifndef Q_OS_WIN
 #include <unistd.h>
-#ifndef Q_OS_HAIKU
+#if !defined(Q_OS_HAIKU) && !defined(Q_OS_ANDROID)
 #include <libintl.h>
 #endif
 #endif
@@ -137,7 +139,7 @@ Q_LOGGING_CATEGORY(LOG_KATE, "kate", QtWarningMsg)
 
 void KateApp::initPreApplicationCreation(bool detach)
 {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_HAIKU)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_HAIKU) && !defined(Q_OS_ANDROID)
     // Prohibit using sudo or kdesu (but allow using the root user directly)
     if (getuid() == 0) {
         setlocale(LC_ALL, "");
@@ -275,7 +277,9 @@ KateApp::KateApp(const QCommandLineParser &args, const ApplicationMode mode, con
     /**
      * Enable crash handling through KCrash.
      */
+#ifndef Q_OS_ANDROID
     KCrash::initialize();
+#endif
 
     /**
      * re-route some signals to application wrapper

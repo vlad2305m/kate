@@ -1,0 +1,7 @@
+// SPDX-FileCopyrightText: 2025 The Kate Authors
+// SPDX-License-Identifier: BSD-3-Clause
+
+ext {
+    projectVersionFull = "@PROJECT_VERSION@"
+    projectVersionCode = @PROJECT_VERSION_PATCH@
+}

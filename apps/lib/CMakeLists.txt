@@ -37,17 +37,19 @@ find_package(
   QUIET
   REQUIRED
   COMPONENTS
-    Crash
     IconThemes
     WindowSystem
     WidgetsAddons
 )
 
+if (NOT ANDROID)
+    find_package(KF6 ${KF6_DEP_VERSION} QUIET REQUIRED COMPONENTS Crash)
+endif()
+
 target_link_libraries(
   kateprivate
   PUBLIC
     KF6::CoreAddons
-    KF6::Crash
     KF6::I18n
     KF6::IconThemes
     KF6::TextEditor
@@ -57,7 +59,11 @@ target_link_libraries(
     KF6::WidgetsAddons
 )
 
-if (NOT WIN32 AND NOT HAIKU)
+if (NOT ANDROID)
+    target_link_libraries(kateprivate PUBLIC KF6::Crash)
+endif()
+
+if (NOT WIN32 AND NOT HAIKU AND NOT ANDROID)
     target_compile_definitions(kateprivate PRIVATE -DKDE_INSTALL_FULL_LOCALEDIR=\"${KDE_INSTALL_FULL_LOCALEDIR}\")
     target_include_directories(kateprivate PRIVATE ${Intl_INCLUDE_DIRS})
     target_link_libraries(kateprivate PRIVATE ${Intl_LIBRARIES})
